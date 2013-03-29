@@ -1,0 +1,128 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:drools="http://drools.org/schema/drools-spring" xmlns:util="http://www.springframework.org/schema/util"
+	xmlns:task="http://www.springframework.org/schema/task" xmlns:jee="http://www.springframework.org/schema/jee"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+	 http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+     http://www.springframework.org/schema/context
+     http://www.springframework.org/schema/context/spring-context-3.0.xsd
+      http://www.springframework.org/schema/util
+       http://www.springframework.org/schema/util/spring-util-3.0.xsd
+       http://drools.org/schema/drools-spring	http://anonsvn.jboss.org/repos/labs/labs/jbossrules/trunk/drools-container/drools-spring/src/main/resources/org/drools/container/spring/drools-spring-1.0.0.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task-3.0.xsd
+       http://www.springframework.org/schema/jee http://www.springframework.org/schema/jee/spring-jee-3.0.xsd">
+
+	<context:annotation-config />
+	<context:component-scan base-package="com.convenetech" />
+	
+	<bean id="propertyConfigurer"
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<property name="locations">
+			<list>
+				<value>classpath:environment.properties</value>
+			</list>
+		</property>
+	</bean>
+
+	<!-- the DataSource (parameterized for configuration via a PropertyPlaceHolderConfigurer) -->
+	<bean id="mysqldataSource" destroy-method="close"
+		class="org.apache.commons.dbcp.BasicDataSource">
+		<property name="driverClassName" value="${jdbc.driverClassName}" />
+		<property name="url" value="${jdbc.url}" />
+		<property name="username" value="${jdbc.username}" />
+		<property name="password" value="${jdbc.password}" />
+	</bean>
+
+
+	<jee:jndi-lookup id="jmsTopicConnectionFactory"
+		jndi-name="${jms.connectionfactory.name}" expected-type="javax.jms.TopicConnectionFactory"
+		cache="false" lookup-on-startup="false"></jee:jndi-lookup>
+
+	<jee:jndi-lookup id="jmsTopic" jndi-name="${jms.destination.name}"
+		expected-type="javax.jms.Topic" cache="false" lookup-on-startup="false"></jee:jndi-lookup>
+
+	<!-- A JmsTemplate instance that uses the cached connection and destination -->
+	<bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+		<property name="connectionFactory" ref="jmsTopicConnectionFactory" />
+		<property name="defaultDestination" ref="jmsTopic" />
+		<!-- <property name="messageConverter" ref="messageConverter"></property> -->
+	</bean>
+
+	<bean id="messageConverter"
+		class="com.convenetech.notification.event.drools.service.ObjectMessageConverter" />
+
+
+	<!-- drools rules config starts here -->
+
+	<drools:kbase id="kbase">
+		<drools:configuration>
+			<drools:event-processing-mode mode="STREAM" />
+		</drools:configuration>
+	</drools:kbase>
+
+	<drools:resource-change-scanner id="resourceScanner"
+		interval="10" />
+
+	<drools:kagent kbase="kbase" id="agent" new-instance="false">
+		<drools:resources>
+			<drools:resource type="CHANGE_SET" source="${drools.changeset.url}"></drools:resource>
+		</drools:resources>
+	</drools:kagent>
+
+	<drools:ksession id="rsession" type="stateful" kbase="kbase"
+		name="rsession">
+		<drools:script>
+			<drools:set-global identifier="log" ref="defaultLog"></drools:set-global>
+			<drools:set-global identifier="nodeManagerService"
+				ref="nodeManagerServiceImpl"></drools:set-global>
+			<drools:fire-all-rules />
+		</drools:script>
+	</drools:ksession>
+
+	<bean id="defaultLog" class="org.apache.log4j.Logger"
+		factory-method="getLogger">
+		<constructor-arg type="java.lang.String" value="defaultLog" />
+	</bean>
+
+
+	<bean id="pipelineFactory" class="org.drools.runtime.pipeline.PipelineFactory">
+	</bean>
+
+	<bean id="knowledgeRuntimeCommandReceiver" class="org.drools.runtime.pipeline.PipelineFactory"
+		factory-method="newStatefulKnowledgeSessionInsert" />
+
+	<bean id="actionReceiver" class="org.drools.runtime.pipeline.PipelineFactory"
+		factory-method="newJmsUnwrapMessageObject">
+		<property name="receiver" ref="knowledgeRuntimeCommandReceiver"></property>
+	</bean>
+
+	<bean id="pipeline" class="org.drools.runtime.pipeline.PipelineFactory"
+		factory-method="newStatefulKnowledgeSessionPipeline">
+		<constructor-arg ref="rsession" />
+		<property name="receiver" ref="actionReceiver"></property>
+	</bean>
+
+	<bean id="messageListener"
+		class="com.convenetech.notification.event.drools.service.NodeMetricMessageListener">
+		<property name="pipeline" ref="pipeline"></property>
+	</bean>
+
+	<bean id="jmsContainer"
+		class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+		<property name="connectionFactory" ref="jmsTopicConnectionFactory" />
+		<property name="destination" ref="jmsTopic" />
+		<property name="messageListener" ref="messageListener" />
+	</bean>
+
+
+	<bean id="ruleEngineService"
+		class="com.convenetech.notification.event.drools.service.RuleEngineService">
+		<property name="rsession" ref="rsession"></property>
+	</bean>
+
+	<task:scheduled-tasks>
+		<task:scheduled ref="ruleEngineService" method="timedFireAllRules"
+			cron="*/5 * * * * *" />
+	</task:scheduled-tasks>
+
+</beans>

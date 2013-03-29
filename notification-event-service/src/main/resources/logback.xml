@@ -1,0 +1,32 @@
+<configuration>
+
+	<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- log by method is not fast. remove it later -->
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36}/%method %msg%n
+			</pattern>
+		</encoder>
+	</appender>
+
+	<logger name="com.apache" level="DEBUG"/> 
+    <logger name="com.convenetech" level="DEBUG"/>
+    <logger name="org.springframework" level="DEBUG"/>
+
+    <!--
+	<logger id="org.springframework.ws.client.MessageTracing.sent" level="TRACE"/>
+    <logger id="org.springframework.ws.client.MessageTracing.received" level="TRACE"/>
+    <logger id="org.springframework.ws.client.MessageTracing" level="DEBUG"/>
+    <logger id="org.apache.cxf" level="TRACE"/>
+    <logger id="org.springframework.security" level="DEBUG"/>
+    <logger id="org.apache.tapestry5" level="TRACE"/>
+    <logger id="org.hibernate.validator" level="TRACE"/>
+    <logger id="org.aspectj" level="DEBUG"/>
+    <logger id="org.springframework.cache" level="DEBUG"/>
+    <logger id="org.springframework" level="DEBUG"/>
+    <logger id="net.sf.ehcache" level="DEBUG"/>
+    
+-->
+    <root level="WARN">
+		<appender-ref ref="STDOUT" />
+	</root>
+</configuration>
